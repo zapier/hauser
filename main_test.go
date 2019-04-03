@@ -18,7 +18,7 @@ func TestGetRetryInfo(t *testing.T) {
 		expDoRetry    bool
 		expRetryAfter time.Duration
 	}{
-		{
+			{
 			err:           errors.New("random error!"),
 			expDoRetry:    true,
 			expRetryAfter: defaultRetryAfterDuration,
@@ -160,7 +160,7 @@ func (sw *StubWarehouse) ValueToString(val interface{}, isTime bool) string {
 	s := fmt.Sprintf("%v", val)
 	if isTime {
 		t, _ := time.Parse(time.RFC3339Nano, s)
-		return t.Format(time.RFC3339)
+		return t.Format(time.RFC3339Nano)
 	}
 	return s
 }

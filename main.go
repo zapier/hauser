@@ -35,9 +35,6 @@ const (
 	defaultRetryAfterDuration time.Duration = time.Duration(10) * time.Second
 )
 
-// Record represents a single export row in the export file
-type Record map[string]interface{}
-
 type ExportProcessor func(warehouse.Warehouse, []string, *fullstory.Client, []fullstory.ExportMeta) (int, error)
 
 // TransformExportJSONRecord transforms the record map (extracted from the API response json) to a
@@ -111,6 +108,7 @@ func ProcessFilesIndividually(wh warehouse.Warehouse, tableColumns []string, fs 
 		mark := time.Now()
 		var filename string
 		var statusMessage string
+
 		if conf.Local.SaveAsJson {
 			filename = filepath.Join(conf.TmpDir, fmt.Sprintf("%d.json", e.ID))
 			defer os.Remove(filename)
@@ -302,7 +300,7 @@ func WriteBundleToCSV(fs *fullstory.Client, bundleID int, tableColumns []string,
 
 	var recordCount int
 	for decoder.More() {
-		var r Record
+		var r warehouse.Record
 		if err := decoder.Decode(&r); err != nil {
 			log.Printf("failed json decode of record: %s", err)
 			return recordCount, err
@@ -372,6 +370,27 @@ func BackoffOnError(err error) bool {
 	return false
 }
 
+type ExportData struct {
+	format	string
+	src io.ReadCloser
+}
+
+
+func createCSVPipeline(conf *config.Config, headers, []string) {
+	fs := fullstory.NewClient(conf.FsApiToken)
+	if conf.ExportURL != "" {
+		fs.Config.BaseURL = conf.ExportURL
+	}
+	
+}
+
+func createPipeline(conf *config.Config, headers []string) (chan *ExportData) {
+	if conf.FileFormat == "csv" {
+		return createCSVPipeline(conf, headers)
+	} else {
+		return createRawPipeline(conf)
+	}
+}
 func main() {
 	conffile := flag.String("c", "config.toml", "configuration file")
 	flag.Parse()
@@ -386,45 +405,128 @@ func main() {
 		exportProcessor = ProcessFilesByDay
 	}
 
-	var wh warehouse.Warehouse
-	switch conf.Warehouse {
+	var database warehouse.Database
+	var storage warehouse.Storage
+	switch conf.Provider {
+	case "aws":
+		database = warehouse.NewRedshift(conf.Redshift)
+		storage = warehouse.NewS3Storage(conf.S3)
+	case "gcp":
+		database = warehouse.NewBigQuery(conf.BigQuery)
+		storage = warehouse.NewGCPStorage(conf.GCS)
 	case "local":
-		wh = warehouse.NewLocalDisk(conf)
-	case "redshift":
-		wh = warehouse.NewRedshift(conf)
-	case "bigquery":
-		wh = warehouse.NewBigQuery(conf)
+		storage = warehouse.NewLocalDisk(conf.Local)
+	case "":
+		log.Fatal("Provider must be specified in configuration")
 	default:
-		if len(conf.Warehouse) == 0 {
-			log.Fatal("Warehouse type must be specified in configuration")
-		} else {
-			log.Fatalf("Warehouse type '%s' unrecognized", conf.Warehouse)
+		log.Fatalf("Unsupported provider: %s", conf.Provider)
+	}
+
+	pipeline := createPipeline(conf)
+
+	metaCh := make(chan fullstory.ExportMeta)
+	exportCh := make(chan fullstory.ExportData)
+	dataCh := make(chan io.ReadSeeker)
+
+	fs := fullstory.NewClient(conf.FsApiToken)
+	if conf.ExportURL != "" {
+		fs.Config.BaseURL = conf.ExportURL
+	}
+
+	go func () {
+		since := conf.StartTime
+		for {
+			exports, err := fs.ExportList(since)
+			if err != nil {
+				log.Printf("Failed to fetch export list: %s", err)
+				return 0, err
+			}
+			for exp := range exports {
+				metaCh <- exp
+				since = exp.StopTime
+			}
+		}
+	}()
+
+	go func() {
+		var curDay time.Time
+		var tmpFile os.File
+		for meta := range metaCh {
+			metaDay := meta.Start.UTC().Truncate(24 * time.Hour)
+			if curDay.IsZero() {
+				curDay = metaDay
+				tmpFile = os.Create(fmt.Sprintf("./tmp/export-%d%d%d.tmp", ...curDat.Date())
+			}
+
+			if metaDay > curDay {
+				stream, err := os.Open(tmpfile)
+				if err != nil {
+					// problem
+				}
+				dataCh <- stream
+			} else {
+
+			}
+			stream, err := getExportData(fs, meta.BundleID)
+			if err != nil {
+				// do something
+			}
+			data = ExportData{meta: meta, src, stream}
+
+			dataREader
+
+			// save to temp file
+		}
+	}()
+
+
+	// If the final destination for the data is a database, then we need to make
+	// sure that the schema is updated. If FullStory has changed the schema for
+	// events, then we add columns
+	if conf.StorageOnly {
+		if err := storage.InitSyncFile(); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		if err := database.InitSyncTable(); err != nil {
+			log.Fatal(err)
+		}
+
+		if err := database.SyncExportTableSchema(); err != nil {
+			log.Fatal(err)
 		}
 	}
 
-	if err := wh.EnsureCompatibleExportTable(); err != nil {
-		log.Fatal(err)
-	}
+	var err error
+	var synct time.Time
 
-	// NB: We SHOULD fetch the table columns ONLY after the call to EnsureCompatibleExportTable.
-	// The EnsureCompatibleExportTable function potentially alters the schema of the export table in the client warehouse.
-	tableColumns := wh.GetExportTableColumns()
 	for {
-		lastSyncedRecord, err := wh.LastSyncPoint()
+		if !conf.StorageOnly {
+			synct, err = database.LastSyncPoint()
+		else {
+			synct, err = storage.LastSyncPoint()
+		}
+
 		if BackoffOnError(err) {
 			continue
 		}
 
-		numBundles, err := ProcessExportsSince(wh, tableColumns, lastSyncedRecord, exportProcessor)
-		if BackoffOnError(err) {
+		for bundle, err := range pipeline {
+			name := bundle.StorageName()
+
+			storage.Save(bundle, name)
+
+			if !conf.StorageOnly {
+				database.LoadFromStorage(storage, name)
+				storage.Delete(name)
+			}
+		}
+
+		if len(bundles) > 0 {
 			continue
 		}
 
 		// if we processed any bundles, there may be more - check until nothing comes back
-		if numBundles > 0 {
-			continue
-		}
-
 		log.Printf("No exports pending; sleeping %s", conf.CheckInterval.Duration)
 		time.Sleep(conf.CheckInterval.Duration)
 	}

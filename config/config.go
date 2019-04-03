@@ -16,6 +16,7 @@ type Config struct {
 	TmpDir          string
 	ListExportLimit int
 	GroupFilesByDay bool
+	FileFormat      string
 
 	// for debug only; can point to localhost
 	ExportURL string
