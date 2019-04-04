@@ -2,14 +2,15 @@ package warehouse
 
 import (
 	"fmt"
-	"github.com/fullstorydev/hauser/config"
-	"github.com/nishanths/fullstory"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/fullstorydev/hauser/config"
+	"github.com/nishanths/fullstory"
 )
 
 type LocalDisk struct {
@@ -20,15 +21,10 @@ const (
 	timestampFile string = ".sync.hauser"
 )
 
-var _ Warehouse = (*LocalDisk)(nil)
-
 func NewLocalDisk(c *config.Config) *LocalDisk {
 	if _, err := os.Stat(c.Local.SaveDir); os.IsNotExist(err) {
 		errorMessage := fmt.Sprintf("Cannot find folder %s, make sure it exists", c.Local.SaveDir)
 		log.Fatalf(errorMessage)
-	}
-	if c.Local.UseStartTime && c.Local.StartTime.IsZero() {
-		log.Fatalf("Asked to use Start Time, but it is not specified")
 	}
 
 	if c.Local.UseStartTime {
@@ -57,7 +53,7 @@ func (w *LocalDisk) GetExportTableColumns() []string {
 func (w *LocalDisk) LastSyncPoint() (time.Time, error) {
 	t := beginningOfTime
 	if w.conf.Local.UseStartTime {
-		t = w.conf.Local.StartTime
+		t = w.conf.StartTime
 	}
 	filename := filepath.Join(w.conf.Local.SaveDir, timestampFile)
 	if _, err := os.Stat(filename); os.IsNotExist(err) {

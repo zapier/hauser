@@ -8,7 +8,7 @@ import (
 )
 
 type Config struct {
-	Warehouse       string
+	Provider        string
 	FsApiToken      string
 	Backoff         duration
 	BackoffStepsMax int
@@ -17,6 +17,9 @@ type Config struct {
 	ListExportLimit int
 	GroupFilesByDay bool
 	FileFormat      string
+	StartTime       time.Time
+	SaveAsJson      bool
+	StorageOnly     bool
 
 	// for debug only; can point to localhost
 	ExportURL string
@@ -37,7 +40,6 @@ type S3Config struct {
 	Bucket  string
 	Region  string
 	Timeout duration
-	S3Only  bool
 }
 
 type RedshiftConfig struct {
@@ -54,8 +56,7 @@ type RedshiftConfig struct {
 }
 
 type GCSConfig struct {
-	Bucket  string
-	GCSOnly bool
+	Bucket string
 }
 
 type BigQueryConfig struct {
@@ -71,9 +72,7 @@ type duration struct {
 
 type LocalConfig struct {
 	SaveDir      string
-	StartTime    time.Time
 	UseStartTime bool
-	SaveAsJson   bool
 }
 
 func (d *duration) UnmarshalText(text []byte) error {
@@ -93,6 +92,5 @@ func Load(filename string) (*Config, error) {
 	if _, err := toml.Decode(string(tomlData), &conf); err != nil {
 		return nil, err
 	}
-
 	return &conf, nil
 }

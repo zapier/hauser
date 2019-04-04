@@ -220,14 +220,8 @@ func (rs *Redshift) validateSchemaConfig() error {
 // GetExportTableColumns returns all the columns of the export table.
 // It opens a connection and calls getTableColumns
 func (rs *Redshift) GetExportTableColumns() []string {
-	var err error
-	rs.conn, err = rs.MakeRedshiftConnection()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer rs.conn.Close()
-
-	return rs.getTableColumns(rs.conf.ExportTable)
+	fmt.Println("GetExp[ortTableColumns")
+	return nil
 }
 
 func (rs *Redshift) ValueToString(val interface{}, isTime bool) string {
@@ -248,17 +242,6 @@ func (rs *Redshift) ValueToString(val interface{}, isTime bool) string {
 }
 
 func (rs *Redshift) LoadToWarehouse(s3obj string, _ ...fullstory.ExportMeta) error {
-	var err error
-	rs.conn, err = rs.MakeRedshiftConnection()
-	if err != nil {
-		return err
-	}
-	defer rs.conn.Close()
-
-	if err = rs.CopyInData(s3obj); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -301,10 +284,12 @@ func (rs *Redshift) EnsureCompatibleExportTable() error {
 
 // CopyInData copies data from the given s3File to the export table
 func (rs *Redshift) CopyInData(s3file string) error {
-	copyStatement := fmt.Sprintf("COPY %s FROM '%s' CREDENTIALS '%s' DELIMITER ',' REGION '%s' FORMAT AS CSV ACCEPTINVCHARS;",
-		rs.qualifiedExportTableName(), s3file, rs.conf.Credentials, rs.conf.S3.Region)
-	_, err := rs.conn.Exec(copyStatement)
-	return err
+	/*
+		copyStatement := fmt.Sprintf("COPY %s FROM '%s' CREDENTIALS '%s' DELIMITER ',' REGION '%s' FORMAT AS CSV ACCEPTINVCHARS;",
+			rs.qualifiedExportTableName(), s3file, rs.conf.Credentials, rs.conf.Region)
+		_, err := rs.conn.Exec(copyStatement)
+	*/
+	return nil
 }
 
 // CreateExportTable creates an export table with the hauser export table schema
@@ -337,46 +322,7 @@ func (rs *Redshift) DeleteExportRecordsAfter(end time.Time) error {
 	return nil
 }
 
-func (rs *Redshift) LastSyncPoint() (time.Time, error) {
-	t := beginningOfTime
-	var err error
-	rs.conn, err = rs.MakeRedshiftConnection()
-	if err != nil {
-		log.Printf("Couldn't connect to DB: %s", err)
-		return t, err
-	}
-	defer rs.conn.Close()
-
-	if rs.DoesTableExist(rs.conf.SyncTable) {
-		var syncTime pq.NullTime
-		q := fmt.Sprintf("SELECT max(BundleEndTime) FROM %s;", rs.qualifiedSyncTableName())
-		if err := rs.conn.QueryRow(q).Scan(&syncTime); err != nil {
-			log.Printf("Couldn't get max(BundleEndTime): %s", err)
-			return t, err
-		}
-		if syncTime.Valid {
-			t = syncTime.Time
-		}
-
-		if err := rs.RemoveOrphanedRecords(syncTime); err != nil {
-			return t, err
-		}
-
-	} else {
-		if err := rs.CreateSyncTable(); err != nil {
-			log.Printf("Couldn't create sync table: %s", err)
-			return t, err
-		}
-	}
-	return t, nil
-}
-
 func (rs *Redshift) RemoveOrphanedRecords(lastSync pq.NullTime) error {
-	if rs.conf.S3.S3Only {
-		// no need to check for orphaned records, as we're not loading to the export table
-		return nil
-	}
-
 	if !rs.DoesTableExist(rs.conf.ExportTable) {
 		if err := rs.CreateExportTable(); err != nil {
 			log.Printf("Couldn't create export table: %s", err)
@@ -463,8 +409,4 @@ func (rs *Redshift) getMissingFields(schema Schema, tableColumns []string) []War
 
 func (rs *Redshift) GetUploadFailedMsg(filename string, err error) string {
 	return fmt.Sprintf("Failed to upload file %s to s3: %s", filename, err)
-}
-
-func (rs *Redshift) IsUploadOnly() bool {
-	return rs.conf.S3.S3Only
 }

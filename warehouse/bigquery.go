@@ -31,13 +31,7 @@ type BigQuery struct {
 	bqClient *bigquery.Client
 }
 
-var _ Warehouse = &BigQuery{}
-
 func NewBigQuery(c *config.Config) *BigQuery {
-	if c.GCS.GCSOnly {
-		log.Printf("Config flag GCSOnly is on, data will not be loaded to BigQuery")
-	}
-
 	return &BigQuery{
 		conf: c,
 	}
@@ -86,27 +80,25 @@ func (bq *BigQuery) LastSyncPoint() (time.Time, error) {
 		return t, err
 	}
 
-	if !bq.conf.GCS.GCSOnly {
-		// Find the time of the latest export record...if it's after
-		// the time in the sync table, then there must have been a failure
-		// after some records have been loaded, but before the sync record
-		// was written. Use this as the latest sync time, and don't load
-		// any records before this point to prevent duplication
-		exportTime, err := bq.latestEventStart()
-		if err != nil {
-			log.Printf("Couldn't get max(EventStart): %s", err)
-			return t, err
-		}
+	// Find the time of the latest export record...if it's after
+	// the time in the sync table, then there must have been a failure
+	// after some records have been loaded, but before the sync record
+	// was written. Use this as the latest sync time, and don't load
+	// any records before this point to prevent duplication
+	exportTime, err := bq.latestEventStart()
+	if err != nil {
+		log.Printf("Couldn't get max(EventStart): %s", err)
+		return t, err
+	}
 
-		if !exportTime.IsZero() && exportTime.After(t) {
-			// Partitioned tables cannot be dropped, so loading must restart with the first bundle of the day on
-			// which leftover records were found.  The last sync point should be backtracked to the first instant of the day.
-			// Data "cleanup" will occur on load, as the first bundle of the day always uses WRITE_TRUNCATE
-			log.Printf("Export record timestamp after sync time (%s vs %s); starting from beginning of the day", exportTime, t)
-			t = t.Truncate(24 * time.Hour)
-			if err := bq.removeSyncPointsAfter(t); err != nil {
-				return t, err
-			}
+	if !exportTime.IsZero() && exportTime.After(t) {
+		// Partitioned tables cannot be dropped, so loading must restart with the first bundle of the day on
+		// which leftover records were found.  The last sync point should be backtracked to the first instant of the day.
+		// Data "cleanup" will occur on load, as the first bundle of the day always uses WRITE_TRUNCATE
+		log.Printf("Export record timestamp after sync time (%s vs %s); starting from beginning of the day", exportTime, t)
+		t = t.Truncate(24 * time.Hour)
+		if err := bq.removeSyncPointsAfter(t); err != nil {
+			return t, err
 		}
 	}
 
@@ -427,8 +419,4 @@ func (bq *BigQuery) waitForJob(job *bigquery.Job) error {
 
 func (bq *BigQuery) GetUploadFailedMsg(filename string, err error) string {
 	return fmt.Sprintf("Failed to upload file %s to GCS: %s", filename, err)
-}
-
-func (bq *BigQuery) IsUploadOnly() bool {
-	return bq.conf.GCS.GCSOnly
 }

@@ -2,7 +2,6 @@ package warehouse
 
 import (
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -12,28 +11,19 @@ import (
 // Record represents a single export row in the export file
 type Record map[string]interface{}
 
-type Warehouse interface {
+type Storage interface {
 	LastSyncPoint() (time.Time, error)
 	SaveSyncPoints(bundles ...fullstory.ExportMeta) error
-	LoadToWarehouse(filename string, bundles ...fullstory.ExportMeta) error
-	ValueToString(val interface{}, isTime bool) string
-	GetExportTableColumns() []string
-	EnsureCompatibleExportTable() error
 	UploadFile(name string) (string, error)
 	DeleteFile(path string)
 	GetUploadFailedMsg(filename string, err error) string
-	IsUploadOnly() bool
-}
-
-type Storage interface {
-	Save(src *io.Reader, name string) error
-	Delete(name string)
 }
 
 type Database interface {
 	CreateSyncTable() error
 	CreateExportTable() error
 	SyncExportTableSchema() error
+	GetExportTableColumns() []string
 	LastSyncPoint() (time.Time, error)
 	SaveSyncPoints(bundles ...fullstory.ExportMeta) error
 	DeleteOrphanedRecords(t time.Time) (int, error)
