@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"time"
 
@@ -103,7 +102,7 @@ func main() {
 		defer pipeline.Stop()
 
 		for savedfile := range savedfiles {
-			fmt.Println(savedfile)
+			log.Printf("Bundle saved to: %s", savedfile)
 			/*
 				name := bundle.StorageName()
 				storage.Save(savedfile, name)

@@ -1,6 +1,8 @@
 package pipeline
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -17,6 +19,7 @@ type Pipeline struct {
 	metaCh   chan fullstory.ExportMeta
 	expCh    chan ExportData
 	saveCh   chan string
+	recsCh   chan RecordGroup
 	quitCh   chan interface{}
 	conf     *config.Config
 }
@@ -28,6 +31,7 @@ func NewPipeline(conf *config.Config) *Pipeline {
 		metaTime: conf.StartTime,
 		metaCh:   make(chan fullstory.ExportMeta),
 		expCh:    make(chan ExportData),
+		recsCh:   make(chan RecordGroup),
 		saveCh:   make(chan string),
 		quitCh:   make(chan interface{}),
 	}
@@ -38,7 +42,8 @@ func NewPipeline(conf *config.Config) *Pipeline {
 func (p *Pipeline) Start() chan string {
 	go p.metaFetcher()
 	go p.exportFetcher()
-	go p.exportSaver()
+	go p.recordGrouper()
+	go p.recordsSaver()
 	return p.saveCh
 }
 
@@ -95,21 +100,76 @@ func (p *Pipeline) exportFetcher() {
 	}
 }
 
-func (p *Pipeline) exportSaver() {
+func (p *Pipeline) recordGrouper() {
+	var recs []Record
+	var metas []fullstory.ExportMeta
+	var groupDay time.Time
 	for {
 		select {
 		case data := <-p.expCh:
-			// Save the data to the current file
-			fname := fmt.Sprintf("./export_%v.json", data.meta.Start.Format(time.RFC3339))
-			log.Printf("Saving bundle to: %s", fname)
+			newrecs, err := data.GetRecords()
+			if err != nil {
+				log.Printf("Could not decode records: %s", err)
+			}
+			if p.conf.GroupFilesByDay {
+				dataDay := data.meta.Start.UTC().Truncate(24 * time.Hour)
+				if groupDay.Before(dataDay) {
+					if len(recs) > 0 {
+						p.recsCh <- RecordGroup{
+							records: recs,
+							bundles: metas,
+						}
+						recs = recs[:0]
+						metas = metas[:0]
+					}
+					groupDay = dataDay
+				}
+				recs = append(recs, newrecs...)
+				metas = append(metas, data.meta)
+			} else {
+				if len(newrecs) == 0 {
+					continue
+				}
+				p.recsCh <- RecordGroup{
+					records: newrecs,
+					bundles: []fullstory.ExportMeta{data.meta},
+				}
+			}
+		}
+	}
+}
+
+func (p *Pipeline) recordsSaver() {
+	for {
+		select {
+		case rg := <-p.recsCh:
+
+			fname := fmt.Sprintf("./export_%v.json", rg.bundles[0].Start.Format(time.RFC3339))
+
 			out, err := os.Create(fname)
 			if err != nil {
 				log.Printf("Error creating temp file: %s", err)
 				continue
 			}
-			in, err := data.GetRawReader()
-			io.Copy(out, in)
-			in.Close()
+
+			var dataSrc io.Reader
+			if p.conf.SaveAsJson {
+				var err error
+				var jsonRecs []byte
+				if p.conf.PrettyJSON {
+					jsonRecs, err = json.MarshalIndent(rg.records, "", " ")
+				} else {
+					jsonRecs, err = json.Marshal(rg.records)
+				}
+				if err != nil {
+					log.Printf("Error marshaling records: %s", err)
+					continue
+				}
+				dataSrc = bytes.NewReader(jsonRecs)
+			} else {
+				log.Fatal("JSON is only supported format")
+			}
+			io.Copy(out, dataSrc)
 			out.Close()
 			p.saveCh <- fname
 		case <-p.quitCh:

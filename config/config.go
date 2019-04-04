@@ -19,6 +19,7 @@ type Config struct {
 	FileFormat      string
 	StartTime       time.Time
 	SaveAsJson      bool
+	PrettyJSON      bool
 	StorageOnly     bool
 
 	// for debug only; can point to localhost

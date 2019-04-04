@@ -24,6 +24,11 @@ const (
 
 type Record map[string]interface{}
 
+type RecordGroup struct {
+	bundles []fullstory.ExportMeta
+	records []Record
+}
+
 type ExportData struct {
 	meta fullstory.ExportMeta
 	src  io.Reader
@@ -46,6 +51,37 @@ func (d *ExportData) GetReader(format string, headers []string) (io.ReadCloser, 
 	}
 }
 
+func (d *ExportData) GetRecords() ([]Record, error) {
+	stream, err := gzip.NewReader(d.src)
+	if err != nil {
+		log.Print(err)
+		return nil, err
+	}
+
+	var recs []Record
+
+	decoder := json.NewDecoder(stream)
+	decoder.UseNumber()
+
+	// skip array open delimiter
+	if _, err := decoder.Token(); err != nil {
+		log.Printf("Failed json decode of array open token: %s", err)
+		return nil, err
+	}
+
+	for decoder.More() {
+		var r Record
+		decoder.Decode(&r)
+		recs = append(recs, r)
+	}
+
+	if _, err := decoder.Token(); err != nil {
+		log.Fatalf("Failed json decode of array close token: %s", err)
+	}
+
+	return recs, nil
+}
+
 func (d *ExportData) GetCSVReader(headers []string) (io.ReadCloser, error) {
 	stream, err := gzip.NewReader(d.src)
 	if err != nil {
@@ -64,8 +100,6 @@ func (d *ExportData) GetCSVReader(headers []string) (io.ReadCloser, error) {
 			log.Printf("Failed json decode of array open token: %s", err)
 			return
 		}
-
-		csvWriter.Write(headers)
 
 		for decoder.More() {
 			var r Record
