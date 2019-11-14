@@ -211,15 +211,6 @@ func LoadBundles(wh warehouse.Warehouse, filename string, bundles ...fullstory.E
 
 	defer wh.DeleteFile(objPath)
 
-	if err := wh.LoadToWarehouse(objPath, bundles...); err != nil {
-		log.Printf("Failed to load file '%s' to warehouse: %s", filename, err)
-		return err
-	}
-
-	if wh.IsUploadOnly() {
-		return nil
-	}
-
 	// If we've already copied in the data but fail to save the sync point, we're
 	// still okay - the next call to LastSyncPoint() will see that there are export
 	// records beyond the sync point and remove them - ie, we will reprocess the
@@ -228,6 +219,16 @@ func LoadBundles(wh warehouse.Warehouse, filename string, bundles ...fullstory.E
 		log.Printf("Failed to save sync points for bundles ending with %d: %s", bundles[len(bundles)].ID, err)
 		return err
 	}
+
+	if wh.IsUploadOnly() {
+		return nil
+	}
+
+	if err := wh.LoadToWarehouse(objPath, bundles...); err != nil {
+		log.Printf("Failed to load file '%s' to warehouse: %s", filename, err)
+		return err
+	}
+
 	return nil
 }
 
