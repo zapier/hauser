@@ -209,15 +209,15 @@ func LoadBundles(wh warehouse.Warehouse, filename string, bundles ...fullstory.E
 		return err
 	}
 
-	if wh.IsUploadOnly() {
-		return nil
-	}
-
 	defer wh.DeleteFile(objPath)
 
 	if err := wh.LoadToWarehouse(objPath, bundles...); err != nil {
 		log.Printf("Failed to load file '%s' to warehouse: %s", filename, err)
 		return err
+	}
+
+	if wh.IsUploadOnly() {
+		return nil
 	}
 
 	// If we've already copied in the data but fail to save the sync point, we're
