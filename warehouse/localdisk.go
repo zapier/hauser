@@ -2,7 +2,7 @@ package warehouse
 
 import (
 	"fmt"
-	"github.com/fullstorydev/hauser/config"
+	"github.com/zapier/hauser/config"
 	"github.com/nishanths/fullstory"
 	"io"
 	"io/ioutil"
