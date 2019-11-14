@@ -209,8 +209,6 @@ func LoadBundles(wh warehouse.Warehouse, filename string, bundles ...fullstory.E
 		return err
 	}
 
-	defer wh.DeleteFile(objPath)
-
 	// If we've already copied in the data but fail to save the sync point, we're
 	// still okay - the next call to LastSyncPoint() will see that there are export
 	// records beyond the sync point and remove them - ie, we will reprocess the
@@ -228,6 +226,9 @@ func LoadBundles(wh warehouse.Warehouse, filename string, bundles ...fullstory.E
 		log.Printf("Failed to load file '%s' to warehouse: %s", filename, err)
 		return err
 	}
+
+	// This line deletes from S3
+	defer wh.DeleteFile(objPath)
 
 	return nil
 }
