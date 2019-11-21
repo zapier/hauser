@@ -436,7 +436,9 @@ func main() {
 			continue
 		}
 
-		log.Printf("No exports pending; sleeping %s", conf.CheckInterval.Duration)
-		time.Sleep(conf.CheckInterval.Duration)
+		// log.Printf("No exports pending; sleeping %s", conf.CheckInterval.Duration)
+		log.Printf("No exports pending; exiting..")
+		break
+		// time.Sleep(conf.CheckInterval.Duration)
 	}
 }
